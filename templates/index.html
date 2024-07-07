@@ -22,13 +22,19 @@
 
             let intervalId;
 
-            function startGraphUpdates() {
+            async function startGraphUpdates() {
                 intervalId = setInterval(async () => {
-                    const response = await fetch('/graph');
-                    if (response.ok) {
-                        const data = await response.json();
-                        graphContainer.innerHTML = `<pre class="mermaid">${data.mermaid_chart}</pre>`;
-                        renderMermaid();
+                    try {
+                        const response = await fetch('/graph');
+                        if (response.ok) {
+                            const data = await response.json();
+                            graphContainer.innerHTML = `<pre class="mermaid">${data.mermaid_chart}</pre>`;
+                            renderMermaid();
+                        } else {
+                            alert('Network Error!');
+                        }
+                    } catch (error) {
+                        alert('Network Error: ' + error.message);
                     }
                 }, 1000);
             }
@@ -49,30 +55,32 @@
             initialCommandInput.addEventListener("input", checkInitialCommand);
 
             startButton.addEventListener("click", async () => {
-                if (initialCommandInput.value.trim().length < 20) {
-                    alert("Command must be at least 20 characters long.");
-                    return;
-                }
-
                 const formData = new FormData(form);
                 const data = {};
                 formData.forEach((value, key) => {
                     data[key] = value;
                 });
 
-                await fetch("/start", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify(data)
-                });
-
+                try {
+                    await fetch("/start", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(data)
+                    });
+                } catch (error) {
+                    alert('Network Error: ' + error.message);
+                }
             });
 
             stopButton.addEventListener("click", async () => {
-                await fetch("/stop", { method: "POST" });
-                clearInterval(intervalId);
+                try {
+                    await fetch("/stop", { method: "POST" });
+                    clearInterval(intervalId);
+                } catch (error) {
+                    alert('Network Error: ' + error.message);
+                }
             });
 
             const loadSettings = () => {
