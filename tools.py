@@ -13,59 +13,58 @@ notion = Client(auth=os.environ["NOTION_TOKEN"])
 def markdown_to_notion_blocks(md_text):
     html_text = markdown.markdown(md_text)
     soup = BeautifulSoup(html_text, 'html.parser')
-    blocks = []
-
+    h1=h2=content=md_text
+    print(h1,h2,content)
     for element in soup:
         if element.name == 'h1':
-            blocks.append({
-                "object": "block",
-                "type": "heading_1",
-                "heading_1": {
-                    "rich_text": [{
-                        "type": "text",
-                        "text": {"content": element.get_text()}
-                    }]
-                }
-            })
+            h1=element.get_text()
         elif element.name == 'h2':
-            blocks.append({
+            h2=element.get_text()
+        elif element.name == 'p':
+            content = element.get_text()
+    blocks=[
+        {
+            "object": "block",
+            "type": "heading_1",
+            "heading_1": {
+                "rich_text": [{
+                    "type": "text",
+                    "text": {"content": h1}
+                }]
+            }
+        },{
                 "object": "block",
                 "type": "heading_2",
                 "heading_2": {
                     "rich_text": [{
                         "type": "text",
-                        "text": {"content": element.get_text()}
+                        "text": {"content": h2}
                     }]
                 }
-            })
-        elif element.name == 'p':
-            blocks.append({
+            },{
                 "object": "block",
                 "type": "paragraph",
                 "paragraph": {
                     "rich_text": [{
                         "type": "text",
-                        "text": {"content": element.get_text()}
+                        "text": {"content": content}
                     }]
                 }
-            })
-        # Add more conversion logic to support more Markdown elements if needed
-
+            }
+    ]
     return blocks
-
-
 
 # Insert Markdown article into Notion database
 def insert_markdown_to_notion(md_text):
     blocks = markdown_to_notion_blocks(md_text)
     response = notion.pages.create(
-        parent={"database_id":  os.environ["NOTION_DB_ID"]},
+        parent={"database_id": os.environ["NOTION_DB_ID"]},
         properties={
             "Name": {
                 "title": [
                     {
                         "text": {
-                            "content": blocks[0]['heading_1']['rich_text'][0]['text']['content']
+                            "content":  blocks[0]['heading_1']['rich_text'][0]['text']['content']
                         }
                     }
                 ]
@@ -73,10 +72,10 @@ def insert_markdown_to_notion(md_text):
         },
         children=blocks
     )
-    return response
+    return response['id']
 
 # Read article by ID
-def update_article_by_id(page_id, md_text):
+def update_notion_by_id(page_id, md_text):
     blocks = markdown_to_notion_blocks(md_text)
     response = notion.pages.update(
         page_id=page_id,
@@ -97,23 +96,15 @@ def update_article_by_id(page_id, md_text):
 
 
 def getLLMKey():
-    keys = os.getenv("LLM_KEY").split(",")
+    keys = os.getenv("LLM_API_KEY").split(",")
     return random.choice(keys)
 
-def searchReActAgent(prompt:str):
+def search(prompt:str):
     markdownResult = requests.get('https://s.jina.ai/'+prompt).text
     # 使用正则表达式分割文本
-    pattern = r'\[\d+\]\s*Title:'
-    sections = re.split(pattern, markdownResult)
+    result = re.split('] title:', markdownResult)
 
-    # 移除第一个空元素(如果存在)
-    if sections[0] == '':
-        sections = sections[1:]
-
-    # 重新添加标题
-    titles = re.findall(pattern, markdownResult)
-    result = [f"{titles[i]}{sections[i].strip()}" for i in range(len(sections))]
-
+    print(result)
     longText=''
     for r in result:
         longText+=llm(r+'summary and list ref with links like [ref title](link)')
@@ -125,51 +116,70 @@ def makeMarkdownArtile(data:str):
     return llm(data+instruct)
 
 def llm(prompt:str):
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {getLLMKey()}'
-    }
-    data = {
-        "model": os.getenv("LLM_BAK_MODEL"),
+    print(prompt)
+    llmkey = getLLMKey()
+    url = f'{os.getenv("API_BASE_URL")}/v1/chat/completions'
+    payload = {
+        "model":os.getenv("LLM_MODEL"),
         "messages": [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user",
-             "content": prompt}
-        ],
-        "stream": False
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
     }
-    response = requests.post(
-        f'{os.getenv("API_BASE_URL")}/chat/completions',
-        headers=headers,
-        data=json.dumps(data)
-    )
-    result = response.json()
-    content = result['choices'][0]['message']['content'].strip()
-    return content
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {llmkey}"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    resultJson = response.json()
+
+    return resultJson['choices'][0]['message']['content']
+
 
 def read_article_markdown_by_id(page_id):
     blocks = []
     block_children = notion.blocks.children.list(block_id=page_id)
     blocks.extend(block_children['results'])
 
-    # Check if there are more pages of children
-    while block_children['has_more']:
-        block_children = notion.blocks.children.list(block_id=page_id, start_cursor=block_children['next_cursor'])
-        blocks.extend(block_children['results'])
-    md_text = ""
-    for block in blocks:
-        if block['type'] == 'heading_1':
-            md_text += f"# {block['heading_1']['rich_text'][0]['text']['content']}\n\n"
-        elif block['type'] == 'heading_2':
-            md_text += f"## {block['heading_2']['rich_text'][0]['text']['content']}\n\n"
-        elif block['type'] == 'paragraph':
-            md_text += f"{block['paragraph']['rich_text'][0]['text']['content']}\n\n"
-        # Add more conversion logic to support more Notion block types if needed
+    # 用于存储所有块的内容
+    content = []
 
-    return md_text
+    for block in blocks:
+        block_type = block['type']
+        if 'rich_text' in block[block_type]:
+            for text in block[block_type]['rich_text']:
+                content.append(text['text']['content'])
+
+    # 将所有内容结合成一个字符串
+    combined_content = ' '.join(content)
+
+    return combined_content
+def judge(text):
+    judgePrompt =  text+'''
+base on the text above, ,do you need to search for references ? output in json format:
+{
+"analyis":ANALYSIS
+"needSearch":"Y"/"N"
+}    
+    '''
+    needSearch = llm(judgePrompt)
+    result=json.loads(needSearch)
+    return result
 def run(prompt:str,noteId:str=None):
-        if noteId is None:
-            noteId = insert_markdown_to_notion(prompt)
-        result = searchReActAgent(read_article_markdown_by_id(noteId)+prompt)
-        final = makeMarkdownArtile(result)
-        update_article_by_id(noteId, final)
+    if noteId is None:
+        noteId = insert_markdown_to_notion(prompt)
+    print(noteId)
+    prevArticle = read_article_markdown_by_id(noteId)
+    if judge(prevArticle+prompt)['needSearch'] == 'Y':
+        result = search(prevArticle+prompt)
+    else:
+        result = prevArticle+prompt
+    final = makeMarkdownArtile(result)
+    update_notion_by_id(noteId, final)
+
+if __name__ == '__main__':
+    run("langgraph这个项目是否毫无意义？")

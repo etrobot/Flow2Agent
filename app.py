@@ -2,11 +2,11 @@ import logging
 import asyncio
 import time
 import threading
-import random
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
-import networkx as nx
+from tools import (insert_markdown_to_notion, read_article_markdown_by_id,
+                   update_notion_by_id, search, makeMarkdownArtile, judge)
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
@@ -18,21 +18,22 @@ templates = Jinja2Templates(directory="templates")
 # 全局变量
 stop_event = threading.Event()
 current_task = None
+
 base_mermaid_chart = """flowchart TD
-A[初始节点] --> B{Let me think}
-B -->|1| C[搜索节点]
-B -->|2| D[回答节点]
-C -->|返回| B
-D --> E[结束节点]
+A[init] --> B{judge}
+B -->|1| C[search]
+B -->|2| D[makeMarkdownArtile]
+C -->|back| B
+D --> E[update_notion_by_id]
 """
 
+current_mermaid_chart = base_mermaid_chart
 
 @app.get("/")
 async def read_root(request: Request):
     global current_mermaid_chart
     current_mermaid_chart = base_mermaid_chart
     return templates.TemplateResponse("index.html", {"request": request})
-
 
 @app.post("/start")
 async def start_graph(request: Request):
@@ -41,23 +42,19 @@ async def start_graph(request: Request):
     initial_command = data.get("initial_command")
     task_id = data.get("task_id", "default_task_id")
 
-    # 如果有正在运行的任务，停止它
     if current_task:
         stop_event.set()
         await current_task
         stop_event.clear()
 
-    # 创建新任务
     current_task = asyncio.create_task(run_graph_async(initial_command, task_id))
     return JSONResponse({"message": "Graph generation started"})
-
 
 @app.post("/stop")
 async def stop_graph():
     global stop_event
     stop_event.set()
     return JSONResponse({"message": "Graph generation stopped"})
-
 
 @app.get("/graph")
 async def get_graph():
@@ -66,30 +63,15 @@ async def get_graph():
         current_mermaid_chart = base_mermaid_chart
     return JSONResponse({"mermaid_chart": current_mermaid_chart})
 
-
 async def run_graph_async(initial_command, task_id):
     await asyncio.get_event_loop().run_in_executor(None, run_graph, initial_command, task_id)
-
-
-current_mermaid_chart = ""
-
 
 def run_graph(initial_command, task_id):
     global current_mermaid_chart
     try:
-        # 创建网络图
-        G = nx.DiGraph()
-        G.add_edges_from([
-            ("A", "B"),
-            ("B", "C"),
-            ("B", "D"),
-            ("C", "B"),
-            ("D", "E")
-        ])
-
-        # 初始节点
         current_node = "A"
         visited_nodes = []
+        note_id = None
 
         while current_node != "E":
             if stop_event.is_set():
@@ -97,29 +79,42 @@ def run_graph(initial_command, task_id):
                 break
 
             visited_nodes.append(current_node)
-
-            # 更新当前图表
-            highlighted_chart = base_mermaid_chart
-            for node in visited_nodes:
-                highlighted_chart = base_mermaid_chart + f"\nstyle {node} stroke:#23b883,stroke-width:8px"
-            current_mermaid_chart = highlighted_chart
+            update_mermaid_chart(visited_nodes)
 
             time.sleep(2)  # 模拟节点执行时长
 
-            # 确定下一个节点
-            if current_node == "B":
-                current_node = random.choice(["C", "D"])
+            if current_node == "A":
+                note_id = insert_markdown_to_notion(initial_command)
+                current_node = "B"
+            elif current_node == "B":
+                prev_article = read_article_markdown_by_id(note_id)
+                judge_result = judge(prev_article + initial_command)
+                current_node = "C" if judge_result['needSearch'] == 'Y' else "D"
+            elif current_node == "C":
+                prev_article = read_article_markdown_by_id(note_id)
+                result = search(prev_article + initial_command)
+                current_node = "B"
+            elif current_node == "D":
+                prev_article = read_article_markdown_by_id(note_id)
+                result = prev_article + initial_command
+                final = makeMarkdownArtile(result)
+                current_node = "E"
             else:
-                successors = list(G.successors(current_node))
-                current_node = successors[0] if successors else "E"
+                update_notion_by_id(note_id, final)
+                current_node = "E"
 
         stop_event.set()
         logger.info(f"Graph generated successfully for task {task_id}")
     except Exception as e:
         logger.error(f"Error generating graph for task {task_id}: {str(e)}")
 
+def update_mermaid_chart(visited_nodes):
+    global current_mermaid_chart
+    highlighted_chart = base_mermaid_chart
+    for node in visited_nodes:
+        highlighted_chart = base_mermaid_chart + f"\nstyle {node} stroke:#23b883,stroke-width:8px"
+    current_mermaid_chart = highlighted_chart
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
