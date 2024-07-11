@@ -1,6 +1,7 @@
 import os,json
 import random
 import re
+from urllib.parse import quote
 
 from notion_client import Client
 import requests
@@ -100,7 +101,12 @@ def getLLMKey():
     return random.choice(keys)
 
 def search(prompt:str):
-    markdownResult = requests.get('https://s.jina.ai/'+prompt).text
+    print('https://s.jina.ai/'+quote(prompt))
+    headers = {
+        "Authorization": f"Bearer {os.environ['JINA_API_KEY']}"
+    }
+    markdownResult = requests.get('https://s.jina.ai/'+quote(prompt), headers=headers).text
+    print(markdownResult)
     # 使用正则表达式分割文本
     result = re.split('] title:', markdownResult)
 
@@ -162,24 +168,27 @@ def judge(text):
     judgePrompt =  text+'''
 base on the text above, ,do you need to search for references ? output in json format:
 {
-"analyis":ANALYSIS
-"needSearch":"Y"/"N"
+"analyis":ANALYSIS,
+"needSearch":"Y"/"N",
+"keywords":EN_KEYWORDS_ARRAY
 }    
     '''
     needSearch = llm(judgePrompt)
     result=json.loads(needSearch)
+    print(result)
     return result
 def run(prompt:str,noteId:str=None):
     if noteId is None:
         noteId = insert_markdown_to_notion(prompt)
     print(noteId)
     prevArticle = read_article_markdown_by_id(noteId)
-    if judge(prevArticle+prompt)['needSearch'] == 'Y':
-        result = search(prevArticle+prompt)
+    judgeResult = judge(prevArticle+prompt)
+    if judgeResult['needSearch'] == 'Y':
+        result = search(' '.join(judgeResult['keywords']))
     else:
         result = prevArticle+prompt
     final = makeMarkdownArtile(result)
     update_notion_by_id(noteId, final)
 
 if __name__ == '__main__':
-    run("langgraph这个项目是否毫无意义？")
+    run("langgraph这个项目是否毫无意义？",'a23f0a1f-369a-4c22-b212-8be7206a9a74')
