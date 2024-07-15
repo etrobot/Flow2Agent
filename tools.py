@@ -2,8 +2,9 @@ import os,json
 import random
 import re
 from urllib.parse import quote
-
 from notion_client import Client
+from notional.blocks import Page, Paragraph, Heading1, Heading2, Heading3, BulletedListItem
+
 import requests
 import markdown
 from bs4 import BeautifulSoup
@@ -12,52 +13,27 @@ load_dotenv(find_dotenv())
 notion = Client(auth=os.environ["NOTION_TOKEN"])
 # Convert Markdown to Notion blocks
 def markdown_to_notion_blocks(md_text):
-    html_text = markdown.markdown(md_text)
-    soup = BeautifulSoup(html_text, 'html.parser')
-    h1=h2=content=md_text
-    print(h1,h2,content)
-    for element in soup:
-        if element.name == 'h1':
-            h1=element.get_text()
-        elif element.name == 'h2':
-            h2=element.get_text()
-        elif element.name == 'p':
-            content = element.get_text()
-    blocks=[
-        {
-            "object": "block",
-            "type": "heading_1",
-            "heading_1": {
-                "rich_text": [{
-                    "type": "text",
-                    "text": {"content": h1}
-                }]
-            }
-        },{
-                "object": "block",
-                "type": "heading_2",
-                "heading_2": {
-                    "rich_text": [{
-                        "type": "text",
-                        "text": {"content": h2}
-                    }]
-                }
-            },{
-                "object": "block",
-                "type": "paragraph",
-                "paragraph": {
-                    "rich_text": [{
-                        "type": "text",
-                        "text": {"content": content}
-                    }]
-                }
-            }
-    ]
+    blocks=[]
+    lines = md_text.split("\n\n")
+    for line in lines:
+        if line.startswith("# "):
+            blocks.append(Heading1(text=line[2:].strip()))
+        elif line.startswith("## "):
+            blocks.append(Heading2(text=line[3:].strip()))
+        elif line.startswith("### "):
+            blocks.append(Heading3(text=line[4:].strip()))
+        elif line.startswith("- "):
+            blocks.append(BulletedListItem(text=line[2:].strip()))
+        else:
+            blocks.append(Paragraph(text=line.strip()))
     return blocks
 
 # Insert Markdown article into Notion database
 def insert_markdown_to_notion(md_text):
     blocks = markdown_to_notion_blocks(md_text)
+    title = md_text[:60]
+    if len(blocks) > 0:
+        title = blocks[0]['heading_1']['rich_text'][0]['text']['content']
     response = notion.pages.create(
         parent={"database_id": os.environ["NOTION_DB_ID"]},
         properties={
@@ -65,7 +41,7 @@ def insert_markdown_to_notion(md_text):
                 "title": [
                     {
                         "text": {
-                            "content":  blocks[0]['heading_1']['rich_text'][0]['text']['content']
+                            "content": title
                         }
                     }
                 ]
@@ -77,20 +53,25 @@ def insert_markdown_to_notion(md_text):
 
 # Read article by ID
 def update_notion_by_id(page_id, md_text):
+    page=notion.pages.retrieve(page_id=page_id)
     blocks = markdown_to_notion_blocks(md_text)
+    prop = {'Category': {'id': '%40%7DEa', 'type': 'rich_text', 'rich_text': []},
+                                   'Tags': {'id': 'bxEL', 'type': 'multi_select', 'multi_select': []},
+                                   'Created': {'id': 'yzKC', 'type': 'created_time',
+                                               'created_time': '2024-07-11T15:03:00.000Z'},
+                                   'Name': {'id': 'title', 'type': 'title', 'title': [{'type': 'text', 'text': {
+                                       'content': page['properties']['Name']['title'][0]['text']['content'], 'link': None},
+                                                                                       'annotations': {'bold': False,
+                                                                                                       'italic': False,
+                                                                                                       'strikethrough': False,
+                                                                                                       'underline': False,
+                                                                                                       'code': False,
+                                                                                                       'color': 'default'},
+                                                                                       'plain_text': page['properties']['Name']['title'][0]['text']['content'],
+                                                                                       'href': None}]}}
     response = notion.pages.update(
         page_id=page_id,
-        properties={
-            "Name": {
-                "title": [
-                    {
-                        "text": {
-                            "content": blocks[0]['heading_1']['rich_text'][0]['text']['content']
-                        }
-                    }
-                ]
-            }
-        },
+        properties = prop,
         children=blocks
     )
     return response
@@ -122,7 +103,6 @@ def makeMarkdownArtile(data:str):
     return llm(data+instruct)
 
 def llm(prompt:str):
-    print(prompt)
     llmkey = getLLMKey()
     url = f'{os.getenv("API_BASE_URL")}/v1/chat/completions'
     payload = {
@@ -174,8 +154,8 @@ base on the text above, ,do you need to search for references ? output in json f
 }    
     '''
     needSearch = llm(judgePrompt)
-    result=json.loads(needSearch)
-    print(result)
+    match = re.search(r'\{.*\}', needSearch, re.DOTALL)
+    result=json.loads(match.group(0))
     return result
 def run(prompt:str,noteId:str=None):
     if noteId is None:
