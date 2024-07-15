@@ -3,35 +3,43 @@ import random
 import re
 from urllib.parse import quote
 from notion_client import Client
-from notional.blocks import Page, Paragraph, Heading1, Heading2, Heading3, BulletedListItem
-
+from notional.blocks import Paragraph, Heading1, Heading2, Heading3, BulletedListItem, NumberedListItem, TextObject,Quote,CodingLanguage,Code
 import requests
-import markdown
-from bs4 import BeautifulSoup
+
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 notion = Client(auth=os.environ["NOTION_TOKEN"])
 # Convert Markdown to Notion blocks
 def markdown_to_notion_blocks(md_text):
-    blocks=[]
+    blocks = []
     lines = md_text.split("\n\n")
     for line in lines:
         if line.startswith("# "):
-            blocks.append(Heading1(text=line[2:].strip()))
+            blocks.append(Heading1(heading_1=Heading1._NestedData(rich_text=[TextObject(text=line[2:].strip())])))
         elif line.startswith("## "):
-            blocks.append(Heading2(text=line[3:].strip()))
+            blocks.append(Heading2(heading_2=Heading2._NestedData(rich_text=[TextObject(text=line[3:].strip())])))
         elif line.startswith("### "):
-            blocks.append(Heading3(text=line[4:].strip()))
+            blocks.append(Heading3(heading_3=Heading3._NestedData(rich_text=[TextObject(text=line[4:].strip())])))
         elif line.startswith("- "):
-            blocks.append(BulletedListItem(text=line[2:].strip()))
+            blocks.append(BulletedListItem(bulleted_list_item=BulletedListItem._NestedData(rich_text=[TextObject(text=line[2:].strip())])))
+        elif line.startswith("1. "):
+            blocks.append(NumberedListItem(numbered_list_item=NumberedListItem._NestedData(rich_text=[TextObject(text=line[3:].strip())])))
+        elif line.startswith("> "):
+            blocks.append(Quote(quote=Quote._NestedData(rich_text=[TextObject(text=line[2:].strip())])))
+        elif line.startswith("```") and line.endswith("```"):
+            lang = line.split("\n")[0][3:]
+            code_content = "\n".join(line.split("\n")[1:-1])
+            blocks.append(Code(code=Code._NestedData(rich_text=[TextObject(text=code_content)], language=CodingLanguage(lang))))
         else:
-            blocks.append(Paragraph(text=line.strip()))
+            blocks.append(Paragraph(paragraph=Paragraph._NestedData(rich_text=[TextObject(text=line.strip())])))
     return blocks
 
 # Insert Markdown article into Notion database
 def insert_markdown_to_notion(md_text):
-    blocks = markdown_to_notion_blocks(md_text)
+    blocks = []
     title = md_text[:60]
+    if len(md_text) > 100:
+        blocks = markdown_to_notion_blocks(md_text)
     if len(blocks) > 0:
         title = blocks[0]['heading_1']['rich_text'][0]['text']['content']
     response = notion.pages.create(
@@ -55,23 +63,19 @@ def insert_markdown_to_notion(md_text):
 def update_notion_by_id(page_id, md_text):
     page=notion.pages.retrieve(page_id=page_id)
     blocks = markdown_to_notion_blocks(md_text)
-    prop = {'Category': {'id': '%40%7DEa', 'type': 'rich_text', 'rich_text': []},
-                                   'Tags': {'id': 'bxEL', 'type': 'multi_select', 'multi_select': []},
-                                   'Created': {'id': 'yzKC', 'type': 'created_time',
-                                               'created_time': '2024-07-11T15:03:00.000Z'},
-                                   'Name': {'id': 'title', 'type': 'title', 'title': [{'type': 'text', 'text': {
-                                       'content': page['properties']['Name']['title'][0]['text']['content'], 'link': None},
-                                                                                       'annotations': {'bold': False,
-                                                                                                       'italic': False,
-                                                                                                       'strikethrough': False,
-                                                                                                       'underline': False,
-                                                                                                       'code': False,
-                                                                                                       'color': 'default'},
-                                                                                       'plain_text': page['properties']['Name']['title'][0]['text']['content'],
-                                                                                       'href': None}]}}
     response = notion.pages.update(
         page_id=page_id,
-        properties = prop,
+        properties ={
+            "Name": {
+                "title": [
+                    {
+                        "text": {
+                            "content": page['properties']['Name']['title'][0]['text']['content']
+                        }
+                    }
+                ]
+            }
+        },
         children=blocks
     )
     return response
@@ -86,7 +90,7 @@ def search(prompt:str):
     headers = {
         "Authorization": f"Bearer {os.environ['JINA_API_KEY']}"
     }
-    markdownResult = requests.get('https://s.jina.ai/'+quote(prompt), headers=headers).text
+    markdownResult = requests.get('https://s.jina.ai/'+quote(prompt)).text
     print(markdownResult)
     # 使用正则表达式分割文本
     result = re.split('] title:', markdownResult)
@@ -98,6 +102,8 @@ def search(prompt:str):
 
     return longText
 
+def create_rich_text_object(text):
+    return TextObject(plain_text=text, text={"content": text})
 def makeMarkdownArtile(data:str):
     instruct = '\n\nmake a wiki like articles ,every part should ends with links like [ref title](link)'
     return llm(data+instruct)
@@ -122,7 +128,7 @@ def llm(prompt:str):
 
     response = requests.post(url, json=payload, headers=headers)
     resultJson = response.json()
-
+    print(response.text)
     return resultJson['choices'][0]['message']['content']
 
 
@@ -171,4 +177,4 @@ def run(prompt:str,noteId:str=None):
     update_notion_by_id(noteId, final)
 
 if __name__ == '__main__':
-    run("langgraph这个项目是否毫无意义？",'a23f0a1f-369a-4c22-b212-8be7206a9a74')
+    run("langchain is a meaningless project")
