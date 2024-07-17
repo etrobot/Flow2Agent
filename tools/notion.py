@@ -1,9 +1,5 @@
-import os
-
-import notion_client.api_endpoints
-import notional.blocks
 from notion_client import Client
-
+import re
 class NotionMarkdownManager:
     def __init__(self, api_key, database_id):
         self.notion = Client(auth=api_key)
@@ -83,24 +79,34 @@ class NotionMarkdownManager:
             }
 
         def parse_paragraph(text):
+            # 使用正则表达式查找所有的 [text](url) 形式的字符串
+            pattern = re.compile(r'\[([^\]]+)\]\((http[^\)]+)\)')
+
             rich_text = []
-            words = text.split(" ")
-            for word in words:
-                if word.startswith("[") and "](" in word and word.endswith(")"):
-                    text_part = word[1:word.index("]")]
-                    link_part = word[word.index("](") + 2:-1]
-                    rich_text.append(create_link(text_part, link_part))
-                else:
-                    rich_text.append({"type": "text", "text": {"content": word}})
-                rich_text.append({"type": "text", "text": {"content": " "}})  # Add space between words
-            if rich_text[-1]["text"]["content"] == " ":
-                rich_text.pop()  # Remove trailing space
+            last_end = 0
+
+            for match in pattern.finditer(text):
+                start, end = match.span()
+                if start > last_end:
+                    # 处理普通文本部分
+                    rich_text.append({"type": "text", "text": {"content": text[last_end:start]}})
+                # 处理超链接部分
+                link_text, link_url = match.groups()
+                rich_text.append(create_link(link_text, link_url))
+                last_end = end
+
+            if last_end < len(text):
+                # 处理剩余的普通文本部分
+                rich_text.append({"type": "text", "text": {"content": text[last_end:]}})
+
             return {"object": "block", "type": "paragraph", "paragraph": {"rich_text": rich_text}}
 
         blocks = []
-        lines = md_text.split("\n\n")
+        lines = md_text.split("\n")
 
         for line in lines:
+            if len(line) == 0:
+                continue
             if line.startswith("# "):
                 blocks.append(create_heading_1(line[2:]))
             elif line.startswith("## "):
@@ -159,8 +165,7 @@ class NotionMarkdownManager:
                 }
             }
         )
-        for block in blocks:
-            self.notion.blocks.children.append(block_id=page_id, children=block)
+        self.notion.blocks.children.append(block_id=page_id, children=blocks)
         return response
 
     def read_article_markdown_by_id(self, page_id):

@@ -17,6 +17,7 @@ def run(prompt:str,page_id:str=None):
     else:
         result = prevArticle+prompt
     final = makeMarkdownArtile(result)
+    print(final)
     notion_manager.update_notion_by_id(page_id, final)
 
 if __name__ == '__main__':
