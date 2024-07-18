@@ -5,8 +5,7 @@ import threading
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
-from tools import (insert_markdown_to_notion, read_article_markdown_by_id,
-                   update_notion_by_id, search, makeMarkdownArtile, judge)
+
 
 # 设置日志
 logging.basicConfig(level=logging.INFO)
@@ -84,23 +83,14 @@ def run_graph(initial_command, task_id):
             time.sleep(2)  # 模拟节点执行时长
 
             if current_node == "A":
-                note_id = insert_markdown_to_notion(initial_command)
                 current_node = "B"
             elif current_node == "B":
-                prev_article = read_article_markdown_by_id(note_id)
-                judge_result = judge(prev_article + initial_command)
-                current_node = "C" if judge_result['needSearch'] == 'Y' else "D"
+                current_node = "C"
             elif current_node == "C":
-                prev_article = read_article_markdown_by_id(note_id)
-                result = search(prev_article + initial_command)
                 current_node = "B"
             elif current_node == "D":
-                prev_article = read_article_markdown_by_id(note_id)
-                result = prev_article + initial_command
-                final = makeMarkdownArtile(result)
                 current_node = "E"
             else:
-                update_notion_by_id(note_id, final)
                 current_node = "E"
 
         stop_event.set()

@@ -14,11 +14,12 @@ def run(prompt:str,page_id:str=None):
 
     if judgeResult['needSearch'] == 'Y':
         result = search(' '.join(judgeResult['keywords']))
+        print(len(result))
     else:
-        result = prevArticle+prompt
+        result = 'data:\n```'+prevArticle+'```\n\ntopic:\n'+prompt
     final = makeMarkdownArtile(result)
     print(final)
     notion_manager.update_notion_by_id(page_id, final)
 
 if __name__ == '__main__':
-    run('langchain is meaningless')
+    run('Crpto will boom if Trump wins the election')

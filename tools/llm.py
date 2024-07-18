@@ -4,6 +4,10 @@ import re
 from urllib.parse import quote
 import requests
 
+def extractJson(text:str):
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    json_str = re.sub(r',\s*}', '}', match.group(0))
+    return json.loads(json_str)
 def getLLMKey():
     keys = os.getenv("LLM_API_KEY").split(",")
     return random.choice(keys)
@@ -19,11 +23,12 @@ def search(prompt:str):
 
     longText=''
     for r in result:
-        longText+=llm(r+'summary and list ref with links like [ref title](link)')
+        longText+=llm(r+'summary to keypoints and list ref with links like [ref title](link)')
 
     return longText
 
 def llm(prompt:str):
+    print(f'llm:{prompt}')
     llmkey = getLLMKey()
     url = f'{os.getenv("API_BASE_URL")}/v1/chat/completions'
     payload = {
@@ -47,18 +52,18 @@ def llm(prompt:str):
 
 def judge(text):
     judgePrompt =  text+'''
-read the text above and think,do you need to search for references before answering the last question? output in json format:
+read the text above and think,do you need to search for references before answering the last question? output search neccessary analysis in json format:
 {
 "analyis":ANALYSIS,
 "needSearch":"Y"/"N",
-"keywords":EN_KEYWORDS_ARRAY
-}    
+"keywords":KEYWORDS_ARRAY
+}
+must output in English.
     '''
     needSearch = llm(judgePrompt)
-    match = re.search(r'\{.*\}', needSearch, re.DOTALL)
-    result=json.loads(match.group(0))
+    result = extractJson(needSearch)
     return result
 
 def makeMarkdownArtile(data:str):
-    instruct = '\n\nmake a wiki like articles ,every part should ends with links like [ref title](link)'
+    instruct = f'\n\n instruct:base on the data above make a articles for the topic ,every part should ends with links like [ref title](link)'
     return llm(data+instruct)
