@@ -21,5 +21,4 @@ def run(prompt:str,page_id:str=None):
     print(final)
     notion_manager.update_notion_by_id(page_id, final)
 
-if __name__ == '__main__':
-    run('Crpto will boom if Trump wins the election')
+run('Wallstreet will invest more crypto in 2025')

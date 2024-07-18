@@ -1,15 +1,20 @@
 import logging
 import asyncio
-import time
 import threading
+from io import StringIO
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
-
+from tools.llm import *
+from tools.notion import *
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
 
 # 设置日志
-logging.basicConfig(level=logging.INFO)
+log_stream = StringIO()
+logging.basicConfig(level=logging.INFO, stream=log_stream)
 logger = logging.getLogger(__name__)
+notion_manager = NotionMarkdownManager(os.environ["NOTION_TOKEN"], os.environ["NOTION_DB_ID"])
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -60,7 +65,9 @@ async def get_graph():
     global current_mermaid_chart
     if stop_event.is_set():
         current_mermaid_chart = base_mermaid_chart
-    return JSONResponse({"mermaid_chart": current_mermaid_chart})
+    # 获取最新的日志内容
+    log_contents = log_stream.getvalue()
+    return JSONResponse({"mermaid_chart": current_mermaid_chart, "logs": log_contents})
 
 async def run_graph_async(initial_command, task_id):
     await asyncio.get_event_loop().run_in_executor(None, run_graph, initial_command, task_id)
@@ -70,7 +77,10 @@ def run_graph(initial_command, task_id):
     try:
         current_node = "A"
         visited_nodes = []
-        note_id = None
+        page_id = task_id
+        keywords = None
+        prevArticle = None
+        data = None
 
         while current_node != "E":
             if stop_event.is_set():
@@ -79,18 +89,37 @@ def run_graph(initial_command, task_id):
 
             visited_nodes.append(current_node)
             update_mermaid_chart(visited_nodes)
-
-            time.sleep(2)  # 模拟节点执行时长
+            logger.info(f"Current node: {current_node}")
 
             if current_node == "A":
+                logger.info(f"Node A: Initial command: {initial_command}")
+                if page_id is None:
+                    page_id = notion_manager.insert_markdown_to_notion(initial_command.replace('\n', '')[:100])
+                prevArticle = notion_manager.read_article_markdown_by_id(page_id)
+                logger.info(f"Node A: Previous article: {prevArticle}")
+                data = 'data:\n```' + prevArticle + '```\n\ntopic:\n' + initial_command
                 current_node = "B"
             elif current_node == "B":
-                current_node = "C"
+                logger.info(f"Node B: Data for judging: {data}")
+                judge_result = judge(data)
+                logger.info(f"Node B: Judge result: {judge_result}")
+                if judge_result['needSearch'] == 'Y':
+                    keywords = judge_result['keywords']
+                    logger.info(f"Node B: Keywords for search: {keywords}")
+                    current_node = "C"
+                else:
+                    current_node = "D"
             elif current_node == "C":
+                logger.info(f"Node C: Searching with keywords: {' '.join(keywords)}")
+                search_result = search(' '.join(keywords))
+                logger.info(f"Node C: Search result: {search_result}")
+                data = 'data:\n```' + prevArticle + search_result + '```\n\ntopic:\n' + initial_command
                 current_node = "B"
             elif current_node == "D":
-                current_node = "E"
-            else:
+                logger.info(f"Node D: Data for markdown article: {data}")
+                final = makeMarkdownArtile(data)
+                logger.info(f"Node D: Final markdown article: {final}")
+                notion_manager.update_notion_by_id(page_id, final)
                 current_node = "E"
 
         stop_event.set()
