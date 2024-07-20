@@ -30,7 +30,7 @@ def search(prompt:str):
 def llm(prompt:str):
     print(f'llm:{prompt}')
     llmkey = getLLMKey()
-    url = f'{os.getenv("API_BASE_URL")}/v1/chat/completions'
+    url = f'{os.getenv("API_BASE_URL")}/chat/completions'
     payload = {
         "model":os.getenv("LLM_MODEL"),
         "messages": [
