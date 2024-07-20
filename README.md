@@ -1,5 +1,12 @@
 # Flowchart2Agent
 This is an example of creating an AI agent with flowchart
+
+
+
+https://github.com/user-attachments/assets/6625fb85-9953-4283-aefd-e2bf804633fc
+
+
+
 ## Installation
 1. make a .env file from .env.example with your credentials:
 ```
