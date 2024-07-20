@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Mermaid Chart</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+        function renderMermaid() {
+            mermaid.init(undefined, document.querySelectorAll(".mermaid"));
+        }
+
+        async function fetchChart() {
+            try {
+                const response = await fetch('/chart');
+                const data = await response.json();
+                if (response.ok) {
+                    const chartElement = document.getElementById('chart');
+                    chartElement.innerHTML = `<pre class="mermaid">${data.chart}</pre>`;
+                    renderMermaid();
+
+                    const logsContainer = document.getElementById('logs-container');
+                    logsContainer.innerHTML = data.logs.map(log => `<p>${log}</p>`).join('');
+                } else {
+                    console.error('Error fetching chart data:', data);
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
+        async function startBackgroundTask(prompt, page_id) {
+            try {
+                const response = await fetch('/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ prompt, page_id })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    console.log('Background task started:', data);
+                } else {
+                    console.error('Error starting background task:', data);
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchChart(); // Initial load
+            setInterval(fetchChart, 1000); // Refresh chart every second
+
+            const startButton = document.getElementById('start-button');
+            startButton.addEventListener('click', () => {
+                const promptInput = document.getElementById('prompt-input').value;
+                const pageIdInput = document.getElementById('page-id-input').value || null;
+
+                if (promptInput.length < 20) {
+                    alert('At least 20 characters!');
+                } else {
+                    startBackgroundTask(promptInput, pageIdInput);
+                }
+            });
+        });
+    </script>
+</head>
+<body class="bg-gray-800 text-gray-100">
+    <div class="container max-w-4xl mx-auto p-4">
+        <div class="mb-4 text-center">
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col items-center">
+                <h1 class="text-md font-bold mb-2">From FlowChart to Agent</h1>
+                <input id="prompt-input" type="text" placeholder="Enter your prompt" class="mb-2 p-2 border border-gray-600 rounded bg-gray-700 text-white w-full">
+                <input id="page-id-input" type="text" placeholder="Enter page ID (optional)" class="mb-4 p-2 border border-gray-600 rounded bg-gray-700 text-white w-full">
+                <button id="start-button" class="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                    Start
+                </button>
+                <div id="logs-container" class="container h-64 w-full text-sm mt-4 overflow-y-auto"></div>
+            </div>
+            <div id="chart" class="mx-auto"></div>
+        </div>
+    </div>
+</body>
+</html>

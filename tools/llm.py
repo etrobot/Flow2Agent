@@ -65,5 +65,5 @@ must output in English.
     return result
 
 def makeMarkdownArtile(data:str):
-    instruct = f'\n\n instruct:base on the data above make a articles for the topic ,every part should ends with links like [ref title](link)'
+    instruct = f'\n\n instruct:base on the data above make an English articles for the topic ,every part should ends with links like [ref title](link)'
     return llm(data+instruct)
