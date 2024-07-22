@@ -20,3 +20,11 @@ NOTION DB ID="YOUR NOTION DATABASE ID"
 3. run poetry install to install the dependencies
 ## Usage
 poetry run python app.py
+
+## Support
+
+If you find this project useful, please consider supporting me:
+
+<a href="https://buymeacoffee.com/franklin754" target="_blank">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px; width: 217px;" >
+</a>
