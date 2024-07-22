@@ -24,7 +24,8 @@ poetry run python app.py
 ## Support
 
 If you find this project useful, please consider supporting me:
+If you like my work, you can support me by [buying me a coffee]() ☕.
 
-<a href="https://buymeacoffee.com/franklin754" target="_blank">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px; width: 217px;" >
+<a href="https://ko-fi.com/franklin754" target="_blank">
+    <img src="https://storage.ko-fi.com/cdn/brandasset/kofi_button_blue.png" alt="Buy Me a Coffee" style="height: 40px; width: 240px;" >
 </a>
